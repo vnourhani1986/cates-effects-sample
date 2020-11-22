@@ -1,12 +1,13 @@
+import java.io._
 import cats.effect._
 import cats.syntax.all._
-import java.io._
+import scala.util.Try
 
 
 class CopyFile {
-  def copy(origin: File, destination: File): IO[Long] =
+  def copy(origin: File, destination: File, bufferSize: Int): IO[Long] =
     inputOutputStreams(origin, destination).use { case (in, out) =>
-      transfer(in, out)
+      transfer(in, out, bufferSize)
     }
 
   def transmit(origin: InputStream, destination: OutputStream, buffer: Array[Byte], acc: Long): IO[Long] =
@@ -16,9 +17,9 @@ class CopyFile {
       else IO.pure(acc)
     } yield count
 
-  def transfer(origin: InputStream, destination: OutputStream): IO[Long] =
+  def transfer(origin: InputStream, destination: OutputStream, bufferSize: Int): IO[Long] =
     for {
-      buffer <- IO(new Array[Byte](1024 * 10))
+      buffer <- IO(new Array[Byte](bufferSize))
       total <- transmit(origin, destination, buffer, 0)
     } yield total
 
@@ -46,13 +47,29 @@ class CopyFile {
 
 
 object Main extends IOApp {
+
   override def run(args: List[String]): IO[ExitCode] =
     for {
-      _ <- if (args.length < 2) IO.raiseError(new IllegalArgumentException(" need origin and destination files"))
+      _ <- if (args.length < 3 && Try {
+        args(2).toInt
+      }.toOption.isDefined) IO.raiseError(new IllegalArgumentException(" need origin and destination files"))
+      else IO.unit
+      _ <- if (Try {
+        args(2).toInt
+      }.toOption.isEmpty) IO.raiseError(new IllegalArgumentException("buffer size need to be int value"))
+      else IO.unit
+      _ <- if (args(0) == args(1)) IO.raiseError(new IllegalArgumentException("origin and destination are same"))
       else IO.unit
       orig = new File(args(0))
       dest = new File(args(1))
-      count <- (new CopyFile).copy(orig, dest)
+      bufferSize = args(2).toInt
+      //      _ <- if (dest.exists()) Resource.make {
+      //        IO( new Scanner(System.in))
+      //      } { inScanner =>
+      //        IO(inScanner).withErrorHandle(_ => IO(println("input scanner closed")))
+      //      }
+      //      else IO.unit
+      count <- (new CopyFile).copy(orig, dest, bufferSize)
       _ <- IO(println(s"$count bytes copied from ${orig.getPath} to ${dest.getPath}"))
     } yield ExitCode.Success
 }
