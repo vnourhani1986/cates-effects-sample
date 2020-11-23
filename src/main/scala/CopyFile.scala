@@ -4,8 +4,8 @@ import cats.syntax.all._
 import scala.util.Try
 
 
-class CopyFile {
-  def copy(origin: File, destination: File, bufferSize: Int): IO[Long] =
+object CopyFile {
+  def apply(origin: File, destination: File, bufferSize: Int): IO[Long] =
     inputOutputStreams(origin, destination).use { case (in, out) =>
       transfer(in, out, bufferSize)
     }
@@ -50,26 +50,25 @@ object Main extends IOApp {
 
   override def run(args: List[String]): IO[ExitCode] =
     for {
-      _ <- if (args.length < 3 && Try {
-        args(2).toInt
-      }.toOption.isDefined) IO.raiseError(new IllegalArgumentException(" need origin and destination files"))
+      _ <- if (args.length < 3) IO.raiseError(new IllegalArgumentException(" need origin and destination files"))
       else IO.unit
-      _ <- if (Try {
+      bufferSize <- Try {
         args(2).toInt
-      }.toOption.isEmpty) IO.raiseError(new IllegalArgumentException("buffer size need to be int value"))
-      else IO.unit
+      }.toOption match {
+          case Some(value) => IO.pure(value)
+          case None => IO.raiseError(new IllegalArgumentException("buffer size need to be int value"))
+      }
       _ <- if (args(0) == args(1)) IO.raiseError(new IllegalArgumentException("origin and destination are same"))
       else IO.unit
-      orig = new File(args(0))
-      dest = new File(args(1))
-      bufferSize = args(2).toInt
+      orig <- IO(new File(args(0)))
+      dest <- IO(new File(args(1)))
       //      _ <- if (dest.exists()) Resource.make {
       //        IO( new Scanner(System.in))
       //      } { inScanner =>
       //        IO(inScanner).withErrorHandle(_ => IO(println("input scanner closed")))
       //      }
       //      else IO.unit
-      count <- (new CopyFile).copy(orig, dest, bufferSize)
+      count <- CopyFile(orig, dest, bufferSize)
       _ <- IO(println(s"$count bytes copied from ${orig.getPath} to ${dest.getPath}"))
     } yield ExitCode.Success
 }
