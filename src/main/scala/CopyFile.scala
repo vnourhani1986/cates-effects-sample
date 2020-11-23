@@ -54,9 +54,9 @@ object Main extends IOApp {
       else IO.unit
       bufferSize <- Try {
         args(2).toInt
-      }.toOption match {
-          case Some(value) => IO.pure(value)
-          case None => IO.raiseError(new IllegalArgumentException("buffer size need to be int value"))
+      }.toEither match {
+          case Right(value) => IO.pure(value)
+          case Left(ex) => IO.raiseError(ex)
       }
       _ <- if (args(0) == args(1)) IO.raiseError(new IllegalArgumentException("origin and destination are same"))
       else IO.unit
