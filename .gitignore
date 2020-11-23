@@ -12,4 +12,5 @@ dist
 /.project
 /.metals
 /.bloop
+/.vscode
 /temp
