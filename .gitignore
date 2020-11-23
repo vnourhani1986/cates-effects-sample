@@ -11,4 +11,5 @@ dist
 /.classpath
 /.project
 /.metals
+/.bloop
 /temp
