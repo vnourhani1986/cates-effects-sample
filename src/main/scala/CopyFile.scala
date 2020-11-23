@@ -5,14 +5,15 @@ import scala.util.Try
 import io.circe._, io.circe.generic.auto._, io.circe.parser._, io.circe.syntax._
 
 object CopyFile {
-  def apply(origin: File,
-            destination: File,
-            meta: File,
-            bufferSize: Int): IO[Long] =
+  def apply(
+      origin: File,
+      destination: File,
+      meta: File,
+      bufferSize: Int
+  ): IO[Long] =
     for {
-      size <- inputOutputStreams(origin, destination).use {
-        case (in, out) =>
-          transfer(in, out, bufferSize)
+      size <- inputOutputStreams(origin, destination).use { case (in, out) =>
+        transfer(in, out, bufferSize)
       }
       _ <- createMeta(meta, origin.getPath, destination.getPath, size)
     } yield size
@@ -20,16 +21,23 @@ object CopyFile {
   def writeMeta(outputStream: OutputStream, meta: Array[Byte]): IO[Unit] =
     IO(outputStream.write(meta, 0, meta.length))
 
-  def createMeta(file: File,
-                 origin: String,
-                 destination: String,
-                 size: Long): IO[Unit] =
+  def createMeta(
+      file: File,
+      origin: String,
+      destination: String,
+      size: Long
+  ): IO[Unit] =
     outputStream(file).use { out =>
       for {
         calc <- calculateUnit(size)
         (scaledSize, unit) = calc
         buffer <- IO(
-          Meta(origin, destination, Volume(scaledSize, unit)).asJson.noSpaces.getBytes)
+          Meta(
+            origin,
+            destination,
+            Volume(scaledSize, unit)
+          ).asJson.noSpaces.getBytes
+        )
         result <- writeMeta(out, buffer)
       } yield result
     }
@@ -42,23 +50,30 @@ object CopyFile {
       else (size / Unit.Size.Giga, Unit.Symbol.Giga)
     }
 
-  def transmit(origin: InputStream,
-               destination: OutputStream,
-               buffer: Array[Byte],
-               acc: Long): IO[Long] =
+  def transmit(
+      origin: InputStream,
+      destination: OutputStream,
+      buffer: Array[Byte],
+      acc: Long
+  ): IO[Long] =
     for {
       amount <- IO(origin.read(buffer, 0, buffer.size))
-      count <- if (amount > -1)
-        IO(destination.write(buffer, 0, amount)) >> transmit(origin,
-                                                             destination,
-                                                             buffer,
-                                                             acc + amount)
-      else IO.pure(acc)
+      count <-
+        if (amount > -1)
+          IO(destination.write(buffer, 0, amount)) >> transmit(
+            origin,
+            destination,
+            buffer,
+            acc + amount
+          )
+        else IO.pure(acc)
     } yield count
 
-  def transfer(origin: InputStream,
-               destination: OutputStream,
-               bufferSize: Int): IO[Long] =
+  def transfer(
+      origin: InputStream,
+      destination: OutputStream,
+      bufferSize: Int
+  ): IO[Long] =
     for {
       buffer <- IO(new Array[Byte](bufferSize))
       total <- transmit(origin, destination, buffer, 0)
@@ -76,11 +91,14 @@ object CopyFile {
       IO(new FileOutputStream(f))
     } { outStream =>
       IO(outStream.close).handleErrorWith(_ =>
-        IO(println("output file closed")))
+        IO(println("output file closed"))
+      )
     }
 
-  def inputOutputStreams(in: File,
-                         out: File): Resource[IO, (InputStream, OutputStream)] =
+  def inputOutputStreams(
+      in: File,
+      out: File
+  ): Resource[IO, (InputStream, OutputStream)] =
     for {
       inStream <- inputStream(in)
       outStream <- outputStream(out)
@@ -120,27 +138,33 @@ object Main extends IOApp {
 
   override def run(args: List[String]): IO[ExitCode] =
     for {
-      _ <- if (args.length < 3)
-        IO.raiseError(
-          new IllegalArgumentException(" need origin and destination files"))
-      else IO.unit
+      _ <-
+        if (args.length < 3)
+          IO.raiseError(
+            new IllegalArgumentException(" need origin and destination files")
+          )
+        else IO.unit
       bufferSize <- Try {
         args(2).toInt
       }.toEither match {
         case Right(value) => IO.pure(value)
         case Left(ex)     => IO.raiseError(ex)
       }
-      _ <- if (args(0) == args(1))
-        IO.raiseError(
-          new IllegalArgumentException("origin and destination are same"))
-      else IO.unit
+      _ <-
+        if (args(0) == args(1))
+          IO.raiseError(
+            new IllegalArgumentException("origin and destination are same")
+          )
+        else IO.unit
       orig <- IO(new File(args(0)))
       dest <- IO(new File(args(1)))
       meta <- IO(
-        new File(args(1).substring(0, args(1).indexOf('.')) + ".meta.json"))
+        new File(args(1).substring(0, args(1).indexOf('.')) + ".meta.json")
+      )
       count <- CopyFile(orig, dest, meta, bufferSize)
       _ <- IO(
-        println(s"$count bytes copied from ${orig.getPath} to ${dest.getPath}"))
+        println(s"$count bytes copied from ${orig.getPath} to ${dest.getPath}")
+      )
     } yield ExitCode.Success
 
 }

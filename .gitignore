@@ -10,3 +10,5 @@ dist
 /.idea_modules
 /.classpath
 /.project
+/.metals
+/temp
