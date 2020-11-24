@@ -14,3 +14,4 @@ dist
 /.bloop
 /.vscode
 /temp
+/.bsp
