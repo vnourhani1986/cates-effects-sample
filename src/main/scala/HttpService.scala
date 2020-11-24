@@ -41,7 +41,7 @@ object HttpService {
         StaticFile
           .fromFile(
             new File("temp/" + fileName),
-            global,
+            blocker.blockingContext,
             Some(req)
           )
           .getOrElseF(NotFound()) // In case the file doesn't exis
