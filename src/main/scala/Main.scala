@@ -9,41 +9,44 @@ import org.http4s.dsl.io._
 import org.http4s.implicits._
 import org.http4s.server.blaze._
 import scala.concurrent.ExecutionContext.global
-import HttpService._
 
+import org.http4s._
+import org.http4s.circe._
+import org.http4s.dsl.io._
+import java.io._
+import java.util.concurrent._
+import scala.concurrent.ExecutionContext
 object Main extends IOApp {
 
-  override def run(args: List[String]): IO[ExitCode] =
-    for {
-    //   _ <-
-    //     if (args.length < 3)
-    //       IO.raiseError(
-    //         new IllegalArgumentException(" need origin and destination files")
-    //       )
-    //     else IO.unit
-    //   bufferSize <- Try {
-    //     args(2).toInt
-    //   }.toEither match {
-    //     case Right(value) => IO.pure(value)
-    //     case Left(ex)     => IO.raiseError(ex)
-    //   }
-    //   _ <-
-    //     if (args(0) == args(1))
-    //       IO.raiseError(
-    //         new IllegalArgumentException("origin and destination are same")
-    //       )
-    //     else IO.unit
-    //   orig <- IO(new File(args(0)))
-    //   dest <- IO(new File(args(1)))
-    //   meta <- IO(
-    //     new File(args(1).substring(0, args(1).indexOf('.')) + ".meta.json")
-    //   )
-    //   count <- CopyFile(orig, dest, meta, bufferSize)
-    //   _ <- IO(
-    //     println(s"$count bytes copied from ${orig.getPath} to ${dest.getPath}")
-    //   )
-      _ <- serviceBuilder
-        .as(ExitCode.Success)
-    } yield ExitCode.Success
+  override def run(args: List[String]): IO[ExitCode] = {
 
+    for {
+      nonBlockingPool <- IO(Executors.newFixedThreadPool(4))
+      nonBlockingContext <- IO(ExecutionContext.fromExecutor(nonBlockingPool))
+      blockingPool <- IO(Executors.newFixedThreadPool(4))
+      blockingContext <- IO(
+        Blocker
+          .liftExecutorService(blockingPool)
+          .blockingContext
+      )
+      x <- (
+        FileHttpServerBuilder("localhost", 8080, blockingContext)(
+          contextShift,
+          timer,
+          nonBlockingContext
+        ),
+        FileHttpServerBuilder("localhost", 8081, blockingContext)(
+          contextShift,
+          timer,
+          nonBlockingContext
+        ),
+        FileHttpServerBuilder("localhost", 8082, blockingContext)(
+          contextShift,
+          timer,
+          nonBlockingContext
+        )
+      ).parMapN((_, _, _) => ())
+
+    } yield ExitCode.Success
+  }
 }
