@@ -3,13 +3,18 @@ import cats.effect._
 import cats.syntax.all._
 import scala.util.Try
 import io.circe._, io.circe.generic.auto._, io.circe.parser._, io.circe.syntax._
+import io.chrisdavenport.cats.effect.time.implicits._
+import java.time.LocalDateTime
 
 object FileHandler {
+
   def copy(
       origin: File,
       destination: File,
       meta: File,
       bufferSize: Int
+  )(implicit
+      timer: Timer[IO]
   ): IO[Long] =
     for {
       size <- inputOutputStreams(origin, destination).use { case (in, out) =>
@@ -26,16 +31,20 @@ object FileHandler {
       origin: String,
       destination: String,
       size: Long
+  )(implicit
+      timer: Timer[IO]
   ): IO[Unit] =
     outputStream(file).use { out =>
       for {
+        createdAt <- Clock[IO].getLocalDateTimeUTC
         calc <- calculateUnit(size)
         (scaledSize, unit) = calc
         buffer <- IO(
           Meta(
             origin,
             destination,
-            Volume(scaledSize, unit)
+            Volume(scaledSize, unit),
+            createdAt
           ).asJson.noSpaces.getBytes
         )
         result <- writeMeta(out, buffer)
@@ -127,7 +136,8 @@ object FileHandler {
 case class Meta(
     input: String,
     output: String,
-    volume: Volume
+    volume: Volume,
+    createAt: LocalDateTime
 )
 
 case class Volume(

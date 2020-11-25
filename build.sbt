@@ -10,6 +10,7 @@ val Specs2Version = "4.1.0"
 val LogbackVersion = "1.2.3"
 
 libraryDependencies += "org.typelevel" %% "cats-effect" % "2.2.0" withSources () withJavadoc ()
+libraryDependencies += "io.chrisdavenport" %% "cats-effect-time" % "0.1.2"
 libraryDependencies += "com.codecommit" %% "cats-effect-testing-scalatest" % "0.4.2" % Test
 libraryDependencies ++= Seq(
   "io.circe" %% "circe-core",
