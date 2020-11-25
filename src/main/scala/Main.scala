@@ -16,6 +16,11 @@ import org.http4s.dsl.io._
 import java.io._
 import java.util.concurrent._
 import scala.concurrent.ExecutionContext
+
+import pureconfig._
+import pureconfig.generic.auto._
+import pureconfig.module.catseffect.syntax._
+
 object Main extends IOApp {
 
   override def run(args: List[String]): IO[ExitCode] = {
@@ -24,29 +29,29 @@ object Main extends IOApp {
       nonBlockingPool <- IO(Executors.newFixedThreadPool(4))
       nonBlockingContext <- IO(ExecutionContext.fromExecutor(nonBlockingPool))
       blockingPool <- IO(Executors.newFixedThreadPool(4))
-      blockingContext <- IO(
+      blocker <- IO(
         Blocker
           .liftExecutorService(blockingPool)
-          .blockingContext
       )
-      x <- (
-        FileHttpServerBuilder("localhost", 8080, blockingContext)(
-          contextShift,
-          timer,
-          nonBlockingContext
-        ),
-        FileHttpServerBuilder("localhost", 8081, blockingContext)(
-          contextShift,
-          timer,
-          nonBlockingContext
-        ),
-        FileHttpServerBuilder("localhost", 8082, blockingContext)(
+      blockingContext <- IO(blocker.blockingContext)
+      config <- load(blocker)
+      configList <- IO(config.hosts.zip(config.ports))
+      _ <- configList.map { case (host, port) =>
+        FileHttpServerBuilder(host, port, blockingContext)(
           contextShift,
           timer,
           nonBlockingContext
         )
-      ).parMapN((_, _, _) => ())
-
+      }.parSequence
     } yield ExitCode.Success
   }
+
+  def load(blocker: Blocker): IO[AppConfig] = {
+    ConfigSource
+      .file("src/main/resources/application.conf")
+      .loadF[IO, AppConfig](blocker)
+  }
+
+  case class AppConfig(hosts: List[String], ports: List[Int])
+
 }
