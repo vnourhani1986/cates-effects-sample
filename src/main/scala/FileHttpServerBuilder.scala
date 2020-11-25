@@ -21,7 +21,8 @@ object FileHttpServerBuilder {
   def apply(
       hostname: String,
       port: Int,
-      blockingContext: ExecutionContext
+      blockingContext: ExecutionContext,
+      copyThreadPool: ExecutionContext
   )(implicit
       cs: ContextShift[IO],
       timer: Timer[IO],
@@ -29,7 +30,7 @@ object FileHttpServerBuilder {
   ): IO[Unit] =
     BlazeServerBuilder[IO](nonBlockingContext)
       .bindHttp(port, hostname)
-      .withHttpApp(FileHttpRoutes(blockingContext))
+      .withHttpApp(FileHttpRoutes(blockingContext, copyThreadPool))
       .serve
       .compile
       .drain

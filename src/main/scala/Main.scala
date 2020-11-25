@@ -35,9 +35,15 @@ object Main extends IOApp {
       )
       blockingContext <- IO(blocker.blockingContext)
       config <- load(blocker)
-      configList <- IO(config.hosts.zip(config.ports))
-      _ <- configList.map { case (host, port) =>
-        FileHttpServerBuilder(host, port, blockingContext)(
+      copyThreadPool <- IO(Executors.newFixedThreadPool(config.openRequestNo))
+      copyThreadPoolContext <- IO(ExecutionContext.fromExecutor(copyThreadPool))    
+      _ <- config.hosts.map { case Host(host, port) =>
+        FileHttpServerBuilder(
+          host,
+          port,
+          blockingContext,
+          copyThreadPoolContext
+        )(
           contextShift,
           timer,
           nonBlockingContext
@@ -52,6 +58,14 @@ object Main extends IOApp {
       .loadF[IO, AppConfig](blocker)
   }
 
-  case class AppConfig(hosts: List[String], ports: List[Int])
+  case class Host(
+      hostname: String,
+      port: Int
+  )
+
+  case class AppConfig(
+      hosts: List[Host],
+      openRequestNo: Int
+  )
 
 }

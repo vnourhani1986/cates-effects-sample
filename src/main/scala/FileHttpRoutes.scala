@@ -1,5 +1,5 @@
 import cats.effect._, org.http4s._, org.http4s.dsl.io._
-// scala.concurrent.ExecutionContext.Implicits.global
+
 import cats.implicits._
 import org.http4s.server.blaze._
 import org.http4s.implicits._
@@ -19,7 +19,8 @@ import scala.concurrent.ExecutionContext
 
 object FileHttpRoutes {
   def apply(
-      blockingContext: ExecutionContext
+      blockingContext: ExecutionContext,
+      copyThreadPoolContext: ExecutionContext
   )(implicit
       cs: ContextShift[IO],
       timer: Timer[IO],
@@ -31,16 +32,19 @@ object FileHttpRoutes {
     HttpRoutes
       .of[IO] {
         case req @ POST -> Root / "files" =>
-          (for {
-            copyFileRequest <- req.as[CopyFileRequest]
-            orig <- IO(new File("temp/" + copyFileRequest.fileName))
-            dest <- IO(new File("temp/route-distination.txt"))
-            meta <- IO(new File("temp/route-distination.meta.json"))
-            size <- FileHandler.copy(orig, dest, meta, 10)
-            res <- Ok(SuccessResponse("ok").asJson.noSpaces)
-          } yield res).handleErrorWith(error =>
-            Ok(UnsuccessResponse(error.getMessage()).asJson.noSpaces)
-          )
+          cs.evalOn(copyThreadPoolContext) {
+            (for {
+              copyFileRequest <- req.as[CopyFileRequest]
+              orig <- IO(new File("temp/" + copyFileRequest.fileName))
+              dest <- IO(new File("temp/route-distination.txt"))
+              meta <- IO(new File("temp/route-distination.meta.json"))
+              size <- FileHandler.copy(orig, dest, meta, 10)
+              res <- Ok(SuccessResponse("ok").asJson.noSpaces)
+            } yield res).handleErrorWith(error =>
+              Ok(UnsuccessResponse(error.getMessage()).asJson.noSpaces)
+            )
+          }
+
         case req @ GET -> Root / "files" / fileName =>
           StaticFile
             .fromFile(
