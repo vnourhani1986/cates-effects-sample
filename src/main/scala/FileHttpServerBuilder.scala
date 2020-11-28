@@ -24,18 +24,31 @@ object FileHttpServerBuilder {
       hostname: String,
       port: Int,
       guard: Semaphore[IO],
-      numOfRequests: Ref[IO, Long], 
+      servers: Ref[IO, Map[Int, Fiber[IO, Int]]],
       blockingContext: ExecutionContext
   )(implicit
       cs: ContextShift[IO],
       timer: Timer[IO],
       nonBlockingContext: ExecutionContext
-  ): IO[Unit] =
-    BlazeServerBuilder[IO](nonBlockingContext)
-      .bindHttp(port, hostname)
-      .withHttpApp(FileHttpRoutes(blockingContext, guard, numOfRequests))
-      .serve
-      .compile
-      .drain
+  ): IO[Fiber[IO, Int]] =
+    for {
+      numOfRequests <- Ref.of[IO, Long](0)
+      s <- servers.get
+      server <- s.get(port) match {
+        case Some(fiber) => IO(fiber)
+        case None =>
+          BlazeServerBuilder[IO](nonBlockingContext)
+            .bindHttp(port, hostname)
+            .withHttpApp(
+              FileHttpRoutes(blockingContext, guard, numOfRequests, servers)
+            )
+            .serve
+            .compile
+            .drain
+            .start
+            .map(_.map(_ => port))
+      }
+      _ <- servers.modify(list => (list.+(port -> server), list))
+    } yield server
 
 }

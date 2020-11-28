@@ -39,13 +39,15 @@ object Main extends IOApp {
       config <- load(blocker)
       guard <- Semaphore[IO](config.openRequestNo)
       configList <- IO(config.hosts.zip(config.ports))
-      numOfRequests <- Ref.of[IO, Long](0)
+      servers <- Ref.of[IO, Map[Int, Fiber[IO, Int]]](
+        Map.empty[Int, Fiber[IO, Int]]
+      )
       _ <- configList.map { case (host, port) =>
         FileHttpServerBuilder(
           host,
           port,
           guard,
-          numOfRequests,
+          servers,
           blockingContext
         )(
           contextShift,
