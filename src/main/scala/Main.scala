@@ -4,7 +4,7 @@ import cats.syntax.all._
 import scala.util.Try
 import io.circe._, io.circe.generic.auto._, io.circe.parser._, io.circe.syntax._
 import cats.effect._
-import cats.effect.concurrent.Semaphore
+import cats.effect.concurrent.{Semaphore, Ref}
 
 import org.http4s.HttpRoutes
 import org.http4s.dsl.io._
@@ -39,8 +39,15 @@ object Main extends IOApp {
       config <- load(blocker)
       guard <- Semaphore[IO](config.openRequestNo)
       configList <- IO(config.hosts.zip(config.ports))
+      numOfRequests <- Ref.of[IO, Long](0)
       _ <- configList.map { case (host, port) =>
-        FileHttpServerBuilder(host, port, guard, blockingContext)(
+        FileHttpServerBuilder(
+          host,
+          port,
+          guard,
+          numOfRequests,
+          blockingContext
+        )(
           contextShift,
           timer,
           nonBlockingContext
@@ -55,6 +62,10 @@ object Main extends IOApp {
       .loadF[IO, AppConfig](blocker)
   }
 
-  case class AppConfig(hosts: List[String], ports: List[Int], openRequestNo: Int)
+  case class AppConfig(
+      hosts: List[String],
+      ports: List[Int],
+      openRequestNo: Int
+  )
 
 }

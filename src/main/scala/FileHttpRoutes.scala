@@ -6,6 +6,7 @@ import org.http4s.implicits._
 import org.http4s.server.Router
 import cats.data.Kleisli
 import cats.effect.concurrent.Semaphore
+import cats.effect.concurrent.Ref
 
 import io.circe._
 import io.circe.parser._
@@ -22,7 +23,8 @@ import scala.concurrent.ExecutionContext
 object FileHttpRoutes {
   def apply(
       blockingContext: ExecutionContext,
-      guard: Semaphore[IO]
+      guard: Semaphore[IO],
+      numOfRequests: Ref[IO, Long]
   )(implicit
       cs: ContextShift[IO],
       timer: Timer[IO],
@@ -71,6 +73,15 @@ object FileHttpRoutes {
           } yield res).handleErrorWith(error => BadRequest(error.getMessage))
       }
       .orNotFound
+      .flatMap { response =>
+        Kleisli { _ =>
+          for {
+            _ <- numOfRequests.modify(value => (value + 1, value + 1))            
+            res <- IO(response)
+          } yield res
+        }
+
+      }
 
   }
 

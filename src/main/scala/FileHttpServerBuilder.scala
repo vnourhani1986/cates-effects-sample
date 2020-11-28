@@ -4,7 +4,7 @@ import org.http4s.server.blaze._
 import org.http4s.implicits._
 import org.http4s.server.Router
 import cats.data.Kleisli
-import cats.effect.concurrent.Semaphore
+import cats.effect.concurrent.{Semaphore, Ref}
 
 import io.circe._
 import io.circe.parser._
@@ -24,6 +24,7 @@ object FileHttpServerBuilder {
       hostname: String,
       port: Int,
       guard: Semaphore[IO],
+      numOfRequests: Ref[IO, Long], 
       blockingContext: ExecutionContext
   )(implicit
       cs: ContextShift[IO],
@@ -32,7 +33,7 @@ object FileHttpServerBuilder {
   ): IO[Unit] =
     BlazeServerBuilder[IO](nonBlockingContext)
       .bindHttp(port, hostname)
-      .withHttpApp(FileHttpRoutes(blockingContext, guard))
+      .withHttpApp(FileHttpRoutes(blockingContext, guard, numOfRequests))
       .serve
       .compile
       .drain
