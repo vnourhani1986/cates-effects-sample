@@ -24,7 +24,6 @@ object FileHttpRoutes {
   def apply(
       blockingContext: ExecutionContext,
       guard: Semaphore[IO],
-      numOfRequests: Ref[IO, Long],
       servers: Ref[IO, Map[Int, Fiber[IO, Int]]]
   )(implicit
       cs: ContextShift[IO],
@@ -77,70 +76,45 @@ object FileHttpRoutes {
         case req @ POST -> Root / "spawn" =>
           (for {
             request <- req.as[SpawnServerRequest]
-            s <- servers.get
-            res <- s.get(request.port) match {
-              case Some(fiber) =>
-                for {
-                  _ <- IO(fiber)
-                  response <- Ok(
-                    UnsuccessResponse("server already exists").asJson
-                  )
-                } yield response
-              case None =>
-                for {
-                  server <- FileHttpServerBuilder(
-                    "localhost",
-                    request.port,
-                    guard,                    
-                    servers,
-                    blockingContext
-                  ).start
-                  response <- Ok(
-                    SuccessResponse(
-                      s"server spawn on host: localhost, port: ${request.port} is created"
-                    ).asJson
-                  )
-                } yield response
-            }
+            server <- FileHttpServerBuilder
+              .create(
+                "localhost",
+                request.port,
+                guard,
+                servers,
+                blockingContext
+              )
+            res <- Ok(SuccessResponse("server created successfully").asJson)
 
           } yield res).handleErrorWith(error => BadRequest(error.getMessage))
 
         case GET -> Root / "servers" =>
-          (for {
-            ss <- servers.get
-            res <- Ok {
-              SuccessResponse(
-                ss.map(s => s"host: localhost, port: ${s._1}")
-              ).asJson
+          FileHttpServerBuilder
+            .get(servers)
+            .flatMap { ioServers =>
+              Ok {
+                SuccessResponse(
+                  ioServers.map(s => s"host: localhost, port: ${s._1}")
+                ).asJson
+              }
             }
-          } yield res).handleErrorWith(error => BadRequest(error.getMessage))
+            .handleErrorWith(error => BadRequest(error.getMessage))
 
         case DELETE -> Root / "servers" / IntVar(port) =>
-          for {
-            s <- servers.get
-            res <- s.get(port) match {
-              case Some(fiber) =>
-                for {
-                  _ <- IO(fiber.cancel)
-                  response <- Ok(SuccessResponse("server is canceled").asJson)
-                } yield response
-              case None =>
-                BadRequest(UnsuccessResponse("server not found").asJson)
+          FileHttpServerBuilder
+            .cancel(
+              port,
+              servers
+            )
+            .flatMap {
+              case true =>
+                Ok(SuccessResponse("server canceled successfully").asJson)
+              case false => BadRequest(UnsuccessResponse("server does not exists").asJson)
             }
-            _ <- servers.modify(list => (list.-(port), list))
-          } yield res
+            .handleErrorWith(error => BadRequest(error.getMessage))
 
       }
       .orNotFound
-      .flatMap { response =>
-        Kleisli { _ =>
-          for {
-            _ <- numOfRequests.modify(value => (value + 1, value + 1))
-            res <- IO(response)
-          } yield res
-        }
-
-      }
 
   }
 
@@ -155,6 +129,10 @@ object FileHttpRoutes {
   case class SpawnServerRequest(
       port: Int
   )
+
+  object SpawnServerRequest {
+    implicit val decoder = jsonOf[IO, SpawnServerRequest]
+  }
 
   case class SuccessResponse[A](
       data: A

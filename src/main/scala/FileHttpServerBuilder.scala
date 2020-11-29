@@ -20,7 +20,7 @@ import scala.concurrent.ExecutionContext
 
 object FileHttpServerBuilder {
 
-  def apply(
+  def create(
       hostname: String,
       port: Int,
       guard: Semaphore[IO],
@@ -30,25 +30,59 @@ object FileHttpServerBuilder {
       cs: ContextShift[IO],
       timer: Timer[IO],
       nonBlockingContext: ExecutionContext
-  ): IO[Fiber[IO, Int]] =
+  ): IO[Boolean] =
     for {
       numOfRequests <- Ref.of[IO, Long](0)
-      s <- servers.get
-      server <- s.get(port) match {
-        case Some(fiber) => IO(fiber)
-        case None =>
-          BlazeServerBuilder[IO](nonBlockingContext)
-            .bindHttp(port, hostname)
-            .withHttpApp(
-              FileHttpRoutes(blockingContext, guard, numOfRequests, servers)
-            )
-            .serve
-            .compile
-            .drain
-            .start
-            .map(_.map(_ => port))
+      ioServers <- servers.get
+      httpRoutes <- IO {
+        for {
+          response <- FileHttpRoutes(blockingContext, guard, servers)
+          limitedRoutes <- Kleisli { _: Any =>
+            for {
+              _ <- numOfRequests.modify(value => (value + 1, value + 1))
+              res <- IO(response)
+            } yield res
+          }
+        } yield limitedRoutes
+
       }
-      _ <- servers.modify(list => (list.+(port -> server), list))
-    } yield server
+      result <- ioServers.get(port) match {
+        case Some(fiber) => IO(false)
+        case None =>
+          for {
+            fiber <- BlazeServerBuilder[IO](nonBlockingContext)
+              .bindHttp(port, hostname)
+              .withHttpApp(httpRoutes)
+              .serve
+              .compile
+              .drain
+              .start
+              .map(_.map(_ => port))
+            _ <- servers.modify(list => (list.+(port -> fiber), list))
+            res <- IO(true)
+          } yield res
+
+      }
+    } yield result
+
+  def cancel(
+      port: Int,
+      servers: Ref[IO, Map[Int, Fiber[IO, Int]]]
+  ): IO[Boolean] =
+    for {
+      ioServers <- servers.get
+      ioServer <- IO(ioServers.get(port))
+      canceled <- ioServer match {
+        case Some(fiber) =>
+          IO(fiber.cancel) >> servers.modify(list => (list.-(port), list)) >> IO
+            .pure(true)
+        case None => IO.pure(false)
+      }
+    } yield canceled
+
+  def get(
+      servers: Ref[IO, Map[Int, Fiber[IO, Int]]]
+  ): IO[Map[Int, Fiber[IO, Int]]] =
+    servers.get
 
 }
