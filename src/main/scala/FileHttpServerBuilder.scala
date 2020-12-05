@@ -17,6 +17,8 @@ import org.http4s.dsl.io._
 import java.io._
 import java.util.concurrent._
 import scala.concurrent.ExecutionContext
+import cats.instances.unit
+import scala.Unit
 
 object FileHttpServerBuilder {
 
@@ -74,7 +76,7 @@ object FileHttpServerBuilder {
       ioServer <- IO(ioServers.get(port))
       canceled <- ioServer match {
         case Some(fiber) =>
-          IO(fiber.cancel) >> servers.modify(list => (list.-(port), list)) >> IO
+          fiber.cancel >> servers.modify(list => (list.-(port), list)) >> IO
             .pure(true)
         case None => IO.pure(false)
       }
@@ -85,4 +87,39 @@ object FileHttpServerBuilder {
   ): IO[Map[Int, Fiber[IO, Int]]] =
     servers.get
 
+}
+
+object Dojo {
+  import cats.data._
+  import cats.implicits._
+  import cats.Id
+
+  def foo(i: Int): String = ???
+  val bar: Kleisli[Id, Int, String] = ???
+
+  val baz = bar.map(_.length())
+
+  type App[T] = StateT[IO, Map[Int, String], T]
+
+  val app1: App[Unit] = ???
+
+  trait Calc[F[_]] {
+    def add(i: Int): F[Unit]
+  }
+
+  case class Config(commission: Double)
+  object Calc {
+    def apply: Kleisli[IO, Config, Calc[A]] = Kleisli(c => IO(new CalcInst(c)))
+  }
+
+  type A[T] = StateT[IO, Double, T]
+  class CalcInst(config: Config) extends Calc[A] {
+    def add(i: Int): A[Unit] = StateT.modify(_ + i * config.commission)
+  }
+
+  for {
+    calc <- Calc.apply.run(Config(0.8))
+    add <- calc.add(2).runF
+    s <- add(1)
+  } yield ()
 }
