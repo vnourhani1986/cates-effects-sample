@@ -62,10 +62,8 @@ trait FileService[F[_]] {
   def get[A](origin: String): F[FileServiceResponse[F]]
 }
 
-final class FileServiceImpl[F[_]: Sync: Timer: ContextShift](
-    guard: Semaphore[F],
-    servers: Ref[F, Map[Int, Fiber[F, Int]]]
-) extends FileService[F] {
+final class FileServiceImpl[F[_]: Sync: Timer: ContextShift]
+    extends FileService[F] {
   def copy(origin: String, destination: String): F[FileServiceResponse[F]] =
     (for {
       validatedOrigin <- Validator[F].validateName(origin)
@@ -97,9 +95,7 @@ object FileService {
       config: AppConfig
   ): F[FileService[F]] =
     for {
-      guard <- Semaphore[F](config.openRequestNo)
-      servers <- Ref[F].of[Map[Int, Fiber[F, Int]]](Map.empty)
-      fileService <- Sync[F].delay(new FileServiceImpl(guard, servers))
+      fileService <- Sync[F].delay(new FileServiceImpl)
     } yield fileService
 
 }

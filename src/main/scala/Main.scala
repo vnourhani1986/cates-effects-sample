@@ -31,29 +31,31 @@ object Main extends IOApp {
       nonBlockingPool <- IO(Executors.newFixedThreadPool(4))
       nonBlockingContext <- IO(ExecutionContext.fromExecutor(nonBlockingPool))
       blockingPool <- IO(Executors.newFixedThreadPool(4))
-      blocker <- IO(
-        Blocker
-          .liftExecutorService(blockingPool)
-      )
+      blocker <- IO(Blocker.liftExecutorService(blockingPool))
       blockingContext <- IO(blocker.blockingContext)
       config <- load(blocker)
       guard <- Semaphore[IO](config.openRequestNo)
       configList <- IO(config.hosts.zip(config.ports))
       numOfRequests <- Ref.of[IO, Long](0)
-      servers <- Ref.of[IO, Map[Int, Fiber[IO, Int]]](
-        Map.empty[Int, Fiber[IO, Int]]
+      servers <- Ref.of[IO, Map[Int, Fiber[IO, Unit]]](
+        Map.empty[Int, Fiber[IO, Unit]]
+      )
+      fileHttpServerBuilder <- FileHttpServerBuilder[IO](
+        servers,
+        config,
+        nonBlockingContext
+      )
+      fileHttpRoutes <- FileHttpRoutes[IO](
+        guard,
+        servers,
+        config,
+        nonBlockingContext
       )
       _ <- configList.map { case (host, port) =>
-        FileHttpServerBuilder.create(
+        fileHttpServerBuilder.create(
           host,
           port,
-          guard,
-          servers,
-          blockingContext
-        )(
-          contextShift,
-          timer,
-          nonBlockingContext
+          fileHttpRoutes.orNotFound
         )
       }.parSequence
     } yield ExitCode.Success

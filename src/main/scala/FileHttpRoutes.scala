@@ -27,145 +27,17 @@ import Main.AppConfig
 import org.http4s.blazecore.util.EntityBodyWriter
 import scala.util.Success
 
-// // algebra
-// trait FileService[F[_], Req[_], Res[_]] {
-//   def create(request: Request[F]): F[Response[F]]
-//   def getFile(fileName: String): F[Response[F]]
-//   def getMeta(fileName: String): F[Response[F]]
-//   def copy(request: Request[F]): F[Response[F]]
-//   def delete(request: Request[F]): F[Response[F]]
-// }
-// program
-// final class FileService1Impl[F[_]: Sync: Timer: ContextShift](
-//     guard: Semaphore[F],
-//     servers: Ref[F, Map[Int, Fiber[F, Int]]]
-// ) extends FileService[F] {
-
-//   implicit val copyFileRequestDecoder = jsonOf[F, CopyFileRequest]
-//   implicit val successResponseEncoder: Encoder[SuccessResponse[Json]] =
-//     new Encoder[SuccessResponse[Json]] {
-//       final def apply(successResponse: SuccessResponse[Json]): Json =
-//         successResponse.asJson
-//     }
-//   implicit def successResponseEntityEncoder[F[_]: Applicative]
-//       : EntityEncoder[F, SuccessResponse[Json]] =
-//     jsonEncoderOf[F, SuccessResponse[Json]]
-
-//   def create(request: RequestModel): F[ResponseModel] = ???
-
-//   def getFile(
-//       fileName: String
-//   )(implicit
-//       blockingContext: ExecutionContext
-//   ): F[Response[F]] =
-//     StaticFile
-//       .fromFile(
-//         new File("temp/" + fileName),
-//         blockingContext,
-//         None
-//       )
-//       .getOrElseF(
-//         Sync[F].delay(Response[F](Status.BadRequest))
-//       ) // In case the file doesn't exist
-
-//   def getMeta(fileName: String): F[Response[F]] =
-//     for {
-//       meta <- Sync[F].delay(new File("temp/" + fileName))
-//       array <- FileHandler[F].read(meta)
-//       parsedJson <- Sync[F].delay {
-//         parse(array.map(_.toChar).mkString)
-//       }
-//       json <- parsedJson match {
-//         case Right(js) => Sync[F].delay(js)
-//         case Left(ex) =>
-//           Sync[F].delay(UnsuccessResponse(ex.getMessage()).asJson)
-//       }
-//       res <- Sync[F].delay(
-//         Response[F](Status.Ok)
-//           .withEntity(SuccessResponse[Json](json))
-//       )
-//     } yield res
-
-//   def copy(request: Request[F]): F[Response[F]] =
-//     guard.withPermit {
-//       for {
-//         copyFileRequest <- request.as[CopyFileRequest]
-//         orig <- Sync[F].delay(new File("temp/" + copyFileRequest.fileName))
-//         dest <- Sync[F].delay(new File("temp/route-distination.txt"))
-//         meta <- Sync[F].delay(new File("temp/route-distination.meta.json"))
-//         size <- FileHandler[F].copy(orig, dest, meta, 10)
-//         res <- Sync[F].delay(SuccessResponse("file is copied"))
-//         result <- Sync[F].delay(Response[F](Status.Ok))
-//       } yield result
-//     }
-
-//   def delete(request: RequestModel): F[Response[F]] = ???
-
-// }
-
-// import Main.AppConfig
-// object FileService1 {
-//   def apply[F[_]: Concurrent: Timer: ContextShift](
-//       config: AppConfig
-//   ): F[FileService[F]] =
-//     for {
-//       guard <- Semaphore[F](config.openRequestNo)
-//       servers <- Ref[F].of[Map[Int, Fiber[F, Int]]](Map.empty)
-//     } yield new FileServiceImpl(guard, servers)
-// }
-
-// trait FileHttpServer[F[_]] {
-//   def create(request: Request[F]): F[Response[F]]
-//   def get(request: Request[F]): F[Response[F]]
-//   def remove(request: Request[F]): F[Response[F]]
-// }
-
-// class FileHttpServerImpl[F[_]: Sync](
-//     guard: Semaphore[F],
-//     servers: Ref[F, Map[Int, Fiber[F, Int]]]
-// ) extends FileHttpServer[F] {
-
-//   implicit val spawnServerRequestDecoder = jsonOf[IO, SpawnServerRequest]
-
-//   def create(request: Request[F]): F[Response[F]] =
-//     for {
-//       req <- request.as[SpawnServerRequest]
-//       server <- FileHttpServerBuilder
-//         .create(
-//           "localhost",
-//           request.port,
-//           guard,
-//           servers,
-//           blockingContext
-//         )
-//       res <- Ok(SuccessResponse("server created successfully").asJson)
-
-//     } yield res
-//   def get(request: Request[F]): F[Response[F]] = ???
-//   def remove(request: Request[F]): F[Response[F]] = ???
-// }
-
-// object FileHttpServer {
-//   def apply[F[_]](
-//       servers: Ref[F, Map[Int, Fiber[F, Int]]]
-//   ): FileHttpServer[F] = new FileHttpServerImpl[F](servers)
-// }
-
 object FileHttpRoutes {
-  def apply[F[_]: Sync](
+  def apply[F[_]: Sync: Timer: ConcurrentEffect: ContextShift](
       guard: Semaphore[F],
-      servers: Ref[F, Map[Int, Fiber[F, Int]]],
-      fileService: FileService[IO]
-  )(implicit
-      blockingContext: ExecutionContext,
-      cs: ContextShift[IO],
-      timer: Timer[IO],
+      servers: Ref[F, Map[Int, Fiber[F, Unit]]],
+      config: AppConfig,
+      // blockingContext: ExecutionContext,
       nonBlockingContext: ExecutionContext
-  ): Kleisli[IO, Request[IO], Response[IO]] = {
+  ): F[HttpRoutes[F]] = {
 
     implicit val copyFileRequestDecoder = jsonOf[F, CopyFileRequest]
-    implicit val sizeDecoder = jsonOf[F, Size]
-
+    implicit val spawnServerRequestDecoder = jsonOf[F, SpawnServerRequest]
     implicit def successResponseEncoder[A](implicit
         jec: Encoder[A]
     ): Encoder[SuccessResponse[F, A]] =
@@ -190,11 +62,7 @@ object FileHttpRoutes {
     ): EntityEncoder[F, UnsuccessResponse[F, A]] =
       jsonEncoderOf[F, UnsuccessResponse[F, A]]
 
-    implicit val spawnServerRequestDecoder = jsonOf[IO, SpawnServerRequest]
-
-    def createFile(file: String): IO[String] = IO.pure(file)
-
-    def FileServiceRouter(fileService: FileService[F]) =
+    def fileServiceRouter(fileService: FileService[F]): HttpRoutes[F] =
       HttpRoutes.of[F] {
         case req @ POST -> Root / "files" =>
           guard.withPermit {
@@ -253,61 +121,84 @@ object FileHttpRoutes {
                   }
                 case UnsuccessResponse(error: String) =>
                   Response[F](Status.BadRequest).withEntity(
-                    UnsuccessResponse(error: String).asJson
+                    UnsuccessResponse(error).asJson
                   )
               }
             }
           } yield result
       }
 
-    HttpRoutes
-      .of[IO] {
-        
+    def fileHttpServiceBuilderRouter(
+        fileHttpServiceBuilder: FileHttpServerBuilder[F],
+        fileServiceApp: HttpApp[F]
+    ): HttpRoutes[F] =
+      HttpRoutes
+        .of[F] {
+          case req @ POST -> Root / "spawn" =>
+            for {
+              request <- req.as[SpawnServerRequest]
+              server <- fileHttpServiceBuilder
+                .create(
+                  "localhost",
+                  request.port,
+                  fileServiceApp
+                )
+              res <- Sync[F].delay(
+                Response[F](Status.Ok).withEntity(
+                  SuccessResponse("server created successfully").asJson
+                )
+              )
+            } yield res
 
-        //   case req @ POST -> Root / "spawn" =>
-        //     (for {
-        //       request <- req.as[SpawnServerRequest]
-        //       server <- FileHttpServerBuilder
-        //         .create(
-        //           "localhost",
-        //           request.port,
-        //           guard,
-        //           servers,
-        //           blockingContext
-        //         )
-        //       res <- Ok(SuccessResponse("server created successfully").asJson)
+          case GET -> Root / "servers" =>
+            fileHttpServiceBuilder.get
+              .flatMap { ioServers =>
+                Sync[F].delay {
+                  Response[F](Status.Ok).withEntity(
+                    SuccessResponse(
+                      ioServers.map(s => s"host: localhost, port: ${s._1}")
+                    ).asJson
+                  )
+                }
+              }
 
-        //     } yield res).handleErrorWith(error => BadRequest(error.getMessage))
+          case DELETE -> Root / "servers" / IntVar(port) =>
+            fileHttpServiceBuilder
+              .cancel(
+                port
+              )
+              .flatMap {
+                case true =>
+                  Sync[F].delay(
+                    Response[F](Status.Ok).withEntity(
+                      SuccessResponse("server canceled successfully").asJson
+                    )
+                  )
+                case false =>
+                  Sync[F].delay(
+                    Response[F](Status.BadRequest).withEntity(
+                      SuccessResponse("server does not exists").asJson
+                    )
+                  )
+              }
 
-        //   case GET -> Root / "servers" =>
-        //     FileHttpServerBuilder
-        //       .get(servers)
-        //       .flatMap { ioServers =>
-        //         Ok {
-        //           SuccessResponse(
-        //             ioServers.map(s => s"host: localhost, port: ${s._1}")
-        //           ).asJson
-        //         }
-        //       }
-        //       .handleErrorWith(error => BadRequest(error.getMessage))
+        }
 
-        //   case DELETE -> Root / "servers" / IntVar(port) =>
-        //     FileHttpServerBuilder
-        //       .cancel(
-        //         port,
-        //         servers
-        //       )
-        //       .flatMap {
-        //         case true =>
-        //           Ok(SuccessResponse("server canceled successfully").asJson)
-        //         case false =>
-        //           BadRequest(UnsuccessResponse("server does not exists").asJson)
-        //       }
-        //       .handleErrorWith(error => BadRequest(error.getMessage))
-
-        // }
-      }
-      .orNotFound
+    for {
+      fileService <- FileService[F](config)
+      httpRoutes <- Sync[F].delay(fileServiceRouter(fileService))
+      fileHttpServerBuilder <- FileHttpServerBuilder(
+        servers,
+        config,
+        nonBlockingContext
+      )
+      httpServerBuilder <- Sync[F].delay(
+        fileHttpServiceBuilderRouter(
+          fileHttpServerBuilder,
+          fileServiceRouter(fileService).orNotFound
+        )
+      )
+    } yield httpServerBuilder <+> httpRoutes
 
   }
 
@@ -317,14 +208,6 @@ case class CopyFileRequest(
     fileName: String
 )
 
-object CopyFileRequest {
-  implicit val decoder = jsonOf[IO, CopyFileRequest]
-}
-
 case class SpawnServerRequest(
     port: Int
 )
-
-object SpawnServerRequest {
-  implicit val decoder = jsonOf[IO, SpawnServerRequest]
-}

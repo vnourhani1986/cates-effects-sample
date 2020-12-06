@@ -5,6 +5,7 @@ import org.http4s.implicits._
 import org.http4s.server.Router
 import cats.data.Kleisli
 import cats.effect.concurrent.{Semaphore, Ref}
+import cats.effect.{Fiber, CancelToken}
 
 import io.circe._
 import io.circe.parser._
@@ -18,108 +19,77 @@ import java.io._
 import java.util.concurrent._
 import scala.concurrent.ExecutionContext
 import cats.instances.unit
-import scala.Unit
+import Main.AppConfig
 
-object FileHttpServerBuilder {
-
+trait FileHttpServerBuilder[F[_]] {
   def create(
       hostname: String,
       port: Int,
-      guard: Semaphore[IO],
-      servers: Ref[IO, Map[Int, Fiber[IO, Int]]],
-      blockingContext: ExecutionContext
-  )(implicit
-      cs: ContextShift[IO],
-      timer: Timer[IO],
-      nonBlockingContext: ExecutionContext
-  ): IO[Boolean] =
-    for {
-      numOfRequests <- Ref.of[IO, Long](0)
-      ioServers <- servers.get
-      httpRoutes <- IO {
-        for {
-          response <- FileHttpRoutes(blockingContext, guard, servers)
-          limitedRoutes <- Kleisli { _: Any =>
-            for {
-              _ <- numOfRequests.modify(value => (value + 1, value + 1))
-              res <- IO(response)
-            } yield res
-          }
-        } yield limitedRoutes
+      httpApp: HttpApp[F]
+  ): F[Boolean]
+  def cancel(
+      port: Int
+  ): F[Boolean]
+  def get: F[Map[Int, Fiber[F, Unit]]]
+}
 
-      }
+final class FileHttpServerBuilderImpl[F[
+    _
+]: ContextShift: Timer: Sync: ConcurrentEffect](
+    servers: Ref[F, Map[Int, Fiber[F, Unit]]],
+    openRequestNo: Int,
+    executionContext: ExecutionContext
+) extends FileHttpServerBuilder[F] {
+
+  def create(hostname: String, port: Int, httpApp: HttpApp[F]): F[Boolean] =
+    for {
+      ioServers <- servers.get
       result <- ioServers.get(port) match {
-        case Some(fiber) => IO(false)
+        case Some(fiber) => Sync[F].delay(false)
         case None =>
           for {
-            fiber <- BlazeServerBuilder[IO](nonBlockingContext)
-              .bindHttp(port, hostname)
-              .withHttpApp(httpRoutes)
-              .serve
-              .compile
-              .drain
-              .start
-              .map(_.map(_ => port))
+            fiber <- Concurrent[F].start(
+              BlazeServerBuilder[F](executionContext)
+                .bindHttp(port, hostname)
+                .withHttpApp(httpApp)
+                .serve
+                .compile
+                .drain
+            )
             _ <- servers.modify(list => (list.+(port -> fiber), list))
-            res <- IO(true)
+            res <- Sync[F].delay(true)
           } yield res
 
       }
     } yield result
-
-  def cancel(
-      port: Int,
-      servers: Ref[IO, Map[Int, Fiber[IO, Int]]]
-  ): IO[Boolean] =
+  def cancel(port: Int): F[Boolean] =
     for {
       ioServers <- servers.get
-      ioServer <- IO(ioServers.get(port))
+      ioServer <- Sync[F].delay(ioServers.get(port))
       canceled <- ioServer match {
         case Some(fiber) =>
-          fiber.cancel >> servers.modify(list => (list.-(port), list)) >> IO
-            .pure(true)
-        case None => IO.pure(false)
+          fiber.cancel >> servers
+            .modify(list => (list.-(port), list)) >> Sync[F].delay(true)
+        case None => Sync[F].delay(false)
       }
     } yield canceled
-
-  def get(
-      servers: Ref[IO, Map[Int, Fiber[IO, Int]]]
-  ): IO[Map[Int, Fiber[IO, Int]]] =
+  def get: F[Map[Int, Fiber[F, Unit]]] =
     servers.get
-
 }
 
-object Dojo {
-  import cats.data._
-  import cats.implicits._
-  import cats.Id
+object FileHttpServerBuilder {
 
-  def foo(i: Int): String = ???
-  val bar: Kleisli[Id, Int, String] = ???
+  def apply[F[_]: Sync: ContextShift: Timer: ConcurrentEffect](
+      servers: Ref[F, Map[Int, Fiber[F, Unit]]],
+      config: AppConfig,
+      executionContext: ExecutionContext
+  ): F[FileHttpServerBuilder[F]] =
+    Sync[F].delay {
+      new FileHttpServerBuilderImpl[F](
+        servers,
+        config.openRequestNo,
+        executionContext
+      )
+    }
 
-  val baz = bar.map(_.length())
-
-  type App[T] = StateT[IO, Map[Int, String], T]
-
-  val app1: App[Unit] = ???
-
-  trait Calc[F[_]] {
-    def add(i: Int): F[Unit]
-  }
-
-  case class Config(commission: Double)
-  object Calc {
-    def apply: Kleisli[IO, Config, Calc[A]] = Kleisli(c => IO(new CalcInst(c)))
-  }
-
-  type A[T] = StateT[IO, Double, T]
-  class CalcInst(config: Config) extends Calc[A] {
-    def add(i: Int): A[Unit] = StateT.modify(_ + i * config.commission)
-  }
-
-  for {
-    calc <- Calc.apply.run(Config(0.8))
-    add <- calc.add(2).runF
-    s <- add(1)
-  } yield ()
 }
