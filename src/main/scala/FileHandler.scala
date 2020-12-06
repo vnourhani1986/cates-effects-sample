@@ -19,14 +19,14 @@ trait FileReader[F[_]] extends Reader[F]
 
 final class FileReaderImpl[F[_]: Sync](resource: Resource[F, InputStream])
     extends FileReader[F] {
-  def read: F[Array[Byte]] = resource.use { inputStream =>
+  def read[A: ClassTag]: F[Array[Byte]] = resource.use { inputStream =>
     for {
       buffer <- Sync[F].delay(Array[Byte](1))
       amount <- Sync[F].delay(inputStream.read(buffer, 0, 1))
       bytes <-
         if (amount > 0)
           read.map(buffer ++ _)
-        else Sync[F].delay(Array.empty[Byte])
+        else Sync[F].delay(Array.empty[A])
     } yield bytes
   }
 }
