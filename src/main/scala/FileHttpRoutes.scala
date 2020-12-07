@@ -70,7 +70,7 @@ object FileHttpRoutes {
               copyFileRequest <- req.as[CopyFileRequest]
               copyFileResponse <- fileService.copy(
                 "temp/" + copyFileRequest.fileName,
-                "temp/route-distination.txt"
+                "temp/destination.txt"
               )
               result <- Sync[F].delay {
                 copyFileResponse match {
@@ -134,9 +134,14 @@ object FileHttpRoutes {
     ): HttpRoutes[F] =
       HttpRoutes
         .of[F] {
+          case GET -> Root / "health" =>
+            Sync[F].delay {
+              Response[F](Status.Ok).withEntity("server is healthy")
+            }
           case req @ POST -> Root / "spawn" =>
             for {
               request <- req.as[SpawnServerRequest]
+              _ <- Sync[F].delay(println(request))
               server <- fileHttpServiceBuilder
                 .create(
                   "localhost",
@@ -177,7 +182,7 @@ object FileHttpRoutes {
                 case false =>
                   Sync[F].delay(
                     Response[F](Status.BadRequest).withEntity(
-                      SuccessResponse("server does not exists").asJson
+                      UnsuccessResponse("server does not exists").asJson
                     )
                   )
               }

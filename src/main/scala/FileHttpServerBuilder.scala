@@ -43,7 +43,7 @@ final class FileHttpServerBuilderImpl[F[
 
   def create(hostname: String, port: Int, httpApp: HttpApp[F]): F[Boolean] =
     for {
-      ioServers <- servers.get
+      ioServers <- servers.get           
       result <- ioServers.get(port) match {
         case Some(fiber) => Sync[F].delay(false)
         case None =>
@@ -56,7 +56,8 @@ final class FileHttpServerBuilderImpl[F[
                 .compile
                 .drain
             )
-            _ <- servers.modify(list => (list.+(port -> fiber), list))
+            x <- servers.modify(list => (list.+(port -> fiber), list))
+            _ <- Sync[F].delay(println(x)) 
             res <- Sync[F].delay(true)
           } yield res
 

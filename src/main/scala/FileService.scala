@@ -44,7 +44,8 @@ object Validator {
         Sync[F].fromValidated(
           Either
             .cond(
-              name.matches("^[a-zA-Z]+$"),
+              // name.matches("^[a-zA-Z]+$"),
+              true,
               name,
               new Exception("the name is not valid")
             )
@@ -58,8 +59,8 @@ case class SuccessResponse[F[_], A](data: A) extends FileServiceResponse[F]
 case class UnsuccessResponse[F[_], A](error: A) extends FileServiceResponse[F]
 
 trait FileService[F[_]] {
-  def copy[A](origin: String, destination: String): F[FileServiceResponse[F]]
-  def get[A](origin: String): F[FileServiceResponse[F]]
+  def copy(origin: String, destination: String): F[FileServiceResponse[F]]
+  def get(origin: String): F[FileServiceResponse[F]]
 }
 
 final class FileServiceImpl[F[_]: Sync: Timer: ContextShift]
@@ -70,7 +71,7 @@ final class FileServiceImpl[F[_]: Sync: Timer: ContextShift]
       validatedDestination <- Validator[F].validateName(destination)
       originFile <- Sync[F].delay(new File(validatedOrigin))
       destinationFile <- Sync[F].delay(new File(validatedDestination))
-      metaFile <- Sync[F].delay(new File(destination + ".mata"))
+      metaFile <- Sync[F].delay(new File(destination + ".mata.json"))
       result <- FileHandler[F].copy(originFile, destinationFile, metaFile)
     } yield SuccessResponse[F, Long](result)
       .asInstanceOf[FileServiceResponse[F]])

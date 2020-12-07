@@ -9,10 +9,10 @@ import cats.syntax.apply
 import scala.reflect.ClassTag
 import cats.effect.Resource.Par.Tag
 trait Reader[F[_]] {
-  def read[A]: F[A]
+  def read: F[Array[Byte]]
 }
 trait Writer[F[_]] {
-  def write[A](a: A): F[Unit]
+  def write(a: Array[Byte]): F[Unit]
 }
 
 trait FileReader[F[_]] extends Reader[F]
@@ -97,7 +97,7 @@ object FileHandler {
     def read(file: File): F[Array[Byte]] =
       for {
         fileReader <- Sync[F].delay(FileReader[F](file))
-        bytes <- fileReader.read[Array[Byte]]
+        bytes <- fileReader.read
       } yield bytes
 
     def write(file: File, buffer: Array[Byte]): F[Unit] =
@@ -127,7 +127,7 @@ object FileHandler {
         buffer: Array[Byte]
     ): F[Long] =
       for {
-        bytes <- fileReader.read[Array[Byte]]
+        bytes <- fileReader.read
         _ <- fileWriter.write(bytes)
       } yield bytes.size
 
