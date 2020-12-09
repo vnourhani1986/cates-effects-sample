@@ -72,7 +72,7 @@ object FileHttpRoutes {
                 "temp/" + copyFileRequest.fileName,
                 "temp/destination.txt"
               )
-              result <- Sync[F].delay {
+              result <- Sync[F].delay {                
                 copyFileResponse match {
                   case SuccessResponse(size: Long) =>
                     Response(

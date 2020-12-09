@@ -73,7 +73,7 @@ final class FileServiceImpl[F[_]: Sync: Timer: ContextShift: Concurrent]
       destinationFile <- Sync[F].delay(new File(validatedDestination))
       metaFile <- Sync[F].delay(new File(destination + ".mata.json"))
       result <- FileHandler[F].copy(origin, destination, destination + ".mata.json")
-    } yield SuccessResponse[F, Long](0)
+    } yield SuccessResponse[F, Long](result)
       .asInstanceOf[FileServiceResponse[F]])
       .handleError { error: Throwable =>
         UnsuccessResponse[F, String](error.getMessage)

@@ -132,7 +132,7 @@ trait FileHandler[F[_]] {
       origin: String,
       destination: String,
       meta: String
-  ): F[Unit]
+  ): F[Long]
 
   def read(
       file: File
@@ -171,30 +171,56 @@ object FileHandler {
           _ <- createMeta(meta, origin.getPath, destination.getPath, size)
         } yield size
 
-      def copy(origin: String, destination: String, meta: String): F[Unit] =
+      def length[O]: Pipe[F, O, (O, Int)] =
+        in =>
+          for {
+            len <- in.fold(0)((l, s) => l + 1)
+            out <- in
+          } yield (out, len)
+
+      def copy(origin: String, destination: String, meta: String): F[Long] =
         Stream
           .resource(Blocker[F])
           .flatMap { blocker =>
             io.file
-              .readAll[F](Paths.get(origin), blocker.blockingContext, 4096)
-              .through(
+              .readAll[F](Paths.get(origin), blocker.blockingContext, 1)
+              .through(length)
+              .through{in => 
+                in.map(_._1)
+                .through(
                 io.file
                   .writeAll(Paths.get(destination), blocker.blockingContext)
-              )
-              .through(_ =>
+                ) >> in.map(_._2)
+              }
+              .through(in =>
                 for {
-                  json <- Stream.eval(createMeta(origin, destination, 0))                  
+                  len <- in
+                  _ <- Stream.eval(Sync[F].delay(println("111111111111111111111111")))
+                  _ <- Stream.eval(Sync[F].delay(println("111111111111111111111111")))
+                  _ <- Stream.eval(Sync[F].delay(println("111111111111111111111111")))
+                  _ <- Stream.eval(Sync[F].delay(println("111111111111111111111111")))
+                  _ <- Stream.eval(Sync[F].delay(println("111111111111111111111111")))
+                  _ <- Stream.eval(Sync[F].delay(println("111111111111111111111111")))
+                  _ <- Stream.eval(Sync[F].delay(println("111111111111111111111111")))
+                  _ <- Stream.eval(Sync[F].delay(println("111111111111111111111111")))
+                  _ <- Stream.eval(Sync[F].delay(println("111111111111111111111111")))
+                  _ <- Stream.eval(Sync[F].delay(println("111111111111111111111111")))
+                  _ <- Stream.eval(Sync[F].delay(println("111111111111111111111111")))
+                  _ <- Stream.eval(Sync[F].delay(println("111111111111111111111111")))
+                  json <- Stream.eval(createMeta(origin, destination, len))
                   res <- Stream
                     .emits(json.toString().getBytes())
                     .through(
                       io.file
                         .writeAll(Paths.get(meta), blocker.blockingContext)
                     )
-                } yield res
+                } yield len.toLong
               )
           }
           .compile
-          .drain
+          .last
+          .map(_.getOrElse(1))
+          
 
       def read(file: File): F[Array[Byte]] =
         for {
@@ -266,7 +292,7 @@ object FileHandler {
               (size / Unit.Size.Mega, Unit.Symbol.Mega)
             else (size / Unit.Size.Giga, Unit.Symbol.Giga)
           }
-          dateTime <- Clock[F].realTime(MILLISECONDS)          
+          dateTime <- Clock[F].realTime(MILLISECONDS)
           res <- Sync[F].delay(
             Meta(
               origin,
@@ -274,7 +300,7 @@ object FileHandler {
               Volume(su._1, su._2),
               dateTime
             ).asJson
-          )          
+          )
         } yield res
 
       def transmit[F[_]: Sync](
