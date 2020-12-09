@@ -194,19 +194,7 @@ object FileHandler {
               }
               .through(in =>
                 for {
-                  len <- in
-                  _ <- Stream.eval(Sync[F].delay(println("111111111111111111111111")))
-                  _ <- Stream.eval(Sync[F].delay(println("111111111111111111111111")))
-                  _ <- Stream.eval(Sync[F].delay(println("111111111111111111111111")))
-                  _ <- Stream.eval(Sync[F].delay(println("111111111111111111111111")))
-                  _ <- Stream.eval(Sync[F].delay(println("111111111111111111111111")))
-                  _ <- Stream.eval(Sync[F].delay(println("111111111111111111111111")))
-                  _ <- Stream.eval(Sync[F].delay(println("111111111111111111111111")))
-                  _ <- Stream.eval(Sync[F].delay(println("111111111111111111111111")))
-                  _ <- Stream.eval(Sync[F].delay(println("111111111111111111111111")))
-                  _ <- Stream.eval(Sync[F].delay(println("111111111111111111111111")))
-                  _ <- Stream.eval(Sync[F].delay(println("111111111111111111111111")))
-                  _ <- Stream.eval(Sync[F].delay(println("111111111111111111111111")))
+                  len <- in                  
                   json <- Stream.eval(createMeta(origin, destination, len))
                   res <- Stream
                     .emits(json.toString().getBytes())
