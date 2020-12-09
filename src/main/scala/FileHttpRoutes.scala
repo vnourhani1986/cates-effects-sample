@@ -100,7 +100,7 @@ object FileHttpRoutes {
                   Response[F](Status.Ok).withEntity(data)
                 case UnsuccessResponse(error: String) =>
                   Response[F](Status.BadRequest).withEntity(
-                    UnsuccessResponse(error: String).asJson
+                    UnsuccessResponse[F, String](error).asJson
                   )
               }
             }
@@ -116,12 +116,12 @@ object FileHttpRoutes {
                     case Right(js) => Response[F](Status.Ok).withEntity(js)
                     case Left(ex) =>
                       Response[F](Status.BadRequest).withEntity(
-                        UnsuccessResponse(ex.getMessage()).asJson
+                        UnsuccessResponse[F, String](ex.getMessage()).asJson
                       )
                   }
                 case UnsuccessResponse(error: String) =>
                   Response[F](Status.BadRequest).withEntity(
-                    UnsuccessResponse(error).asJson
+                    UnsuccessResponse[F, String](error).asJson
                   )
               }
             }
@@ -140,8 +140,7 @@ object FileHttpRoutes {
             }
           case req @ POST -> Root / "spawn" =>
             for {
-              request <- req.as[SpawnServerRequest]
-              _ <- Sync[F].delay(println(request))
+              request <- req.as[SpawnServerRequest]              
               server <- fileHttpServiceBuilder
                 .create(
                   "localhost",
@@ -149,8 +148,9 @@ object FileHttpRoutes {
                   fileServiceApp
                 )
               res <- Sync[F].delay(
-                Response[F](Status.Ok).withEntity(
-                  SuccessResponse("server created successfully").asJson
+                Response[F](Status.Ok)
+                .withEntity(
+                  SuccessResponse[F, String]("server created successfully").asJson
                 )
               )
             } yield res
@@ -160,8 +160,8 @@ object FileHttpRoutes {
               .flatMap { ioServers =>
                 Sync[F].delay {
                   Response[F](Status.Ok).withEntity(
-                    SuccessResponse(
-                      ioServers.map(s => s"host: localhost, port: ${s._1}")
+                    SuccessResponse[F, String](
+                      ioServers.map(s => s"host: localhost, port: ${s._1}").mkString(",")
                     ).asJson
                   )
                 }
@@ -176,13 +176,13 @@ object FileHttpRoutes {
                 case true =>
                   Sync[F].delay(
                     Response[F](Status.Ok).withEntity(
-                      SuccessResponse("server canceled successfully").asJson
+                      SuccessResponse[F, String]("server canceled successfully").asJson
                     )
                   )
                 case false =>
                   Sync[F].delay(
                     Response[F](Status.BadRequest).withEntity(
-                      UnsuccessResponse("server does not exists").asJson
+                      UnsuccessResponse[F, String]("server does not exists").asJson
                     )
                   )
               }

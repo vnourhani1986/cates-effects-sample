@@ -63,7 +63,7 @@ trait FileService[F[_]] {
   def get(origin: String): F[FileServiceResponse[F]]
 }
 
-final class FileServiceImpl[F[_]: Sync: Timer: ContextShift]
+final class FileServiceImpl[F[_]: Sync: Timer: ContextShift: Concurrent]
     extends FileService[F] {
   def copy(origin: String, destination: String): F[FileServiceResponse[F]] =
     (for {
@@ -72,8 +72,8 @@ final class FileServiceImpl[F[_]: Sync: Timer: ContextShift]
       originFile <- Sync[F].delay(new File(validatedOrigin))
       destinationFile <- Sync[F].delay(new File(validatedDestination))
       metaFile <- Sync[F].delay(new File(destination + ".mata.json"))
-      result <- FileHandler[F].copy(originFile, destinationFile, metaFile)
-    } yield SuccessResponse[F, Long](result)
+      result <- FileHandler[F].copy(origin, destination, destination + ".mata.json")
+    } yield SuccessResponse[F, Long](0)
       .asInstanceOf[FileServiceResponse[F]])
       .handleError { error: Throwable =>
         UnsuccessResponse[F, String](error.getMessage)
@@ -83,7 +83,7 @@ final class FileServiceImpl[F[_]: Sync: Timer: ContextShift]
     (for {
       validatedFileName <- Validator[F].validateName(fileName)
       file <- Sync[F].delay(new File(validatedFileName))
-      result <- FileHandler[F].read(file)
+      result <- FileHandler[F].read(fileName)
     } yield SuccessResponse[F, Array[Byte]](result)
       .asInstanceOf[FileServiceResponse[F]])
       .handleError { error: Throwable =>

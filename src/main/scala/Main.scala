@@ -22,10 +22,15 @@ import scala.concurrent.ExecutionContext
 import pureconfig._
 import pureconfig.generic.auto._
 import pureconfig.module.catseffect.syntax._
+import cats.syntax.flatMap
 
+import io.circe._
+import io.circe.parser._
+import io.circe.generic.auto._
+import io.circe.syntax._
 object Main extends IOApp {
 
-  override def run(args: List[String]): IO[ExitCode] = {
+  override def run(args: List[String]): IO[ExitCode] = {    
 
     for {
       nonBlockingPool <- IO(Executors.newFixedThreadPool(4))
